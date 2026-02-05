@@ -34,6 +34,12 @@ import datetime  # datetime - wbudowana biblioteka do pracy z datą i czasem
 import json  # json - wbudowana biblioteka do pracy z formatem JSON
             # JSON to format przechowywania danych, używamy go do komunikacji z API
 
+import tempfile  # tempfile - wbudowana biblioteka do tworzenia plików tymczasowych
+                # Używamy jej do zapisywania przesłanych plików wideo
+
+import os  # os - wbudowana biblioteka do operacji systemowych
+          # Używamy jej do pracy ze ścieżkami plików i usuwania plików
+
 from google import genai  # Google Generative AI - API do generowania analiz przez AI
                           # genai pozwala nam używać modeli AI Google (np. Gemini)
 
@@ -382,8 +388,6 @@ def start_analysis(mode, input_source):
         # POPRAWKA: Zapisz przesłany plik tymczasowo
         # Streamlit file_uploader zwraca obiekt UploadedFile, nie ścieżkę
         # Musimy zapisać plik tymczasowo, aby OpenCV mógł go odczytać
-        import tempfile
-        import os
         
         # Utwórz tymczasowy plik z odpowiednim rozszerzeniem
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_path.name)[1])
@@ -501,7 +505,6 @@ def start_analysis(mode, input_source):
     # Usuń tymczasowy plik wideo jeśli został utworzony
     if temp_file_path is not None:
         try:
-            import os
             os.remove(temp_file_path)  # Usuń plik tymczasowy z dysku
         except Exception as e:
             # Jeśli nie udało się usunąć pliku, wyświetl ostrzeżenie
@@ -634,13 +637,19 @@ def generate_report(mode):
     ans = response.text
     
     # Usuń znaczniki markdown jeśli są obecne (np. ```json ... ```)
-    # Sprawdź czy odpowiedź zaczyna się od ``` i kończy na ```
-    if ans.startswith("```"):
-        # Znajdź początek i koniec znaczników
-        start = ans.find("{")  # Znajdź pierwszy nawias klamrowy
-        end = ans.rfind("}") + 1  # Znajdź ostatni nawias klamrowy
+    # Sprawdź czy odpowiedź zawiera znaczniki kodu
+    if "```" in ans:
+        # Znajdź początek JSON (pierwszy nawias klamrowy)
+        start = ans.find("{")
+        # Znajdź koniec JSON (ostatni nawias klamrowy)
+        end = ans.rfind("}") + 1
+        
+        # Sprawdź czy znaleziono prawidłowe granice JSON
         if start != -1 and end > start:
             ans = ans[start:end]
+        else:
+            # Jeśli nie znaleziono prawidłowych granic, spróbuj usunąć tylko znaczniki ```
+            ans = ans.replace("```json", "").replace("```", "").strip()
     
     # Spróbuj sparsować JSON
     try:
@@ -648,8 +657,9 @@ def generate_report(mode):
     except json.JSONDecodeError as e:
         # Jeśli parsowanie nie powiedzie się, wyświetl błąd i użyj domyślnych wartości
         st.error(f"Nie udało się sparsować odpowiedzi AI: {e}")
+        st.info(f"Otrzymana odpowiedź: {response.text[:200]}...")  # Pokaż fragment odpowiedzi
         ans = {
-            "behavior": "Nie można było przeanalizować zachowania",
+            "behavior": "Nie można było przeanalizować zachowania z powodu błędu parsowania JSON",
             "action": "Spróbuj ponownie przeprowadzić analizę"
         }
     
