@@ -81,6 +81,7 @@ Przed rozpoczęciem upewnij się, że masz zainstalowane:
 
 1. **Python 3.8 lub nowszy**
    - Sprawdź wersję: `python --version` lub `python3 --version`
+   - Na wielu systemach (Linux/macOS) może być wymagane użycie `python3` zamiast `python`
    - Jeśli nie masz Pythona, pobierz go ze strony: https://www.python.org/downloads/
 
 2. **Menedżer pakietów pip**
@@ -132,7 +133,50 @@ pip install opencv-python-headless numpy streamlit deepface mediapipe google-gen
 
 W tym projekcie używamy wersji headless, ponieważ Streamlit wyświetla obrazy w przeglądarce.
 
-### Krok 4: Zainstaluj pakiety systemowe (Linux)
+### Krok 4: Konfiguracja klucza API Google Gemini
+
+⚠️ **WAŻNE - Bezpieczeństwo!** ⚠️
+
+Aplikacja wykorzystuje Google Gemini API do generowania analiz behawioralnych. Obecnie klucz API jest zakodowany w pliku `emo.py`, co **NIE JEST BEZPIECZNE** i służy tylko celom demonstracyjnym/edukacyjnym.
+
+**Dla studentów - To jest przykład jak NIE należy postępować w prawdziwych projektach!**
+
+**Zalecane bezpieczne rozwiązania:**
+
+1. **Użyj zmiennych środowiskowych** (najlepsze dla produkcji):
+   ```bash
+   # Linux/macOS
+   export GEMINI_API_KEY="twój_klucz_api"
+   
+   # Windows
+   set GEMINI_API_KEY=twój_klucz_api
+   ```
+   
+   Następnie w kodzie:
+   ```python
+   import os
+   api_key = os.getenv('GEMINI_API_KEY')
+   ```
+
+2. **Użyj pliku konfiguracyjnego** (dodaj `config.json` do `.gitignore`):
+   ```json
+   {
+     "gemini_api_key": "twój_klucz_api"
+   }
+   ```
+
+3. **Użyj Streamlit Secrets** (zalecane dla aplikacji Streamlit):
+   - Utwórz plik `.streamlit/secrets.toml`
+   - Dodaj: `gemini_api_key = "twój_klucz_api"`
+   - W kodzie użyj: `st.secrets["gemini_api_key"]`
+
+**Aby uzyskać własny klucz API:**
+1. Odwiedź: https://makersuite.google.com/app/apikey
+2. Zaloguj się kontem Google
+3. Utwórz nowy klucz API
+4. Skonfiguruj go jedną z powyższych metod
+
+### Krok 5: Zainstaluj pakiety systemowe (Linux)
 
 Jeśli używasz systemu Linux, zainstaluj dodatkowo wymagane pakiety systemowe:
 ```bash

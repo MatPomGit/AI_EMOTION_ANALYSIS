@@ -365,6 +365,8 @@ def start_analysis(mode, input_source):
     """
     # KROK 1: Otwórz źródło wideo
     # ----------------------------
+    temp_file_path = None  # Zmienna do przechowania ścieżki tymczasowego pliku
+    
     if input_source == "camera":
         # Otwórz domyślną kamerę (0 = pierwsza kamera w systemie)
         cap = cv2.VideoCapture(0)
@@ -387,9 +389,10 @@ def start_analysis(mode, input_source):
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_path.name)[1])
         tfile.write(file_path.read())
         tfile.close()
+        temp_file_path = tfile.name  # Zapisz ścieżkę do późniejszego usunięcia
         
         # Otwórz tymczasowy plik
-        cap = cv2.VideoCapture(tfile.name)
+        cap = cv2.VideoCapture(temp_file_path)
 
     # Utwórz pusty kontener Streamlit do wyświetlania wideo
     stframe = st.empty()
@@ -494,6 +497,15 @@ def start_analysis(mode, input_source):
     # -----------------------
     cap.release()  # Zamknij strumień wideo
     cv2.destroyAllWindows()  # Zamknij wszystkie okna OpenCV
+    
+    # Usuń tymczasowy plik wideo jeśli został utworzony
+    if temp_file_path is not None:
+        try:
+            import os
+            os.remove(temp_file_path)  # Usuń plik tymczasowy z dysku
+        except Exception as e:
+            # Jeśli nie udało się usunąć pliku, wyświetl ostrzeżenie
+            st.warning(f"Nie można usunąć pliku tymczasowego: {e}")
 
     # KROK 5: Wygeneruj raport końcowy
     # ---------------------------------
