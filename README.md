@@ -123,8 +123,14 @@ pip install -r requirement.txt
 
 Lub zainstaluj je pojedynczo:
 ```bash
-pip install opencv-python numpy streamlit deepface mediapipe google-generativeai
+pip install opencv-python-headless numpy streamlit deepface mediapipe google-generativeai
 ```
+
+**Wyjaśnienie różnicy między opencv-python a opencv-python-headless:**
+- `opencv-python` - pełna wersja z obsługą GUI (okna wyświetlania obrazów)
+- `opencv-python-headless` - wersja bez GUI, lżejsza, lepsza do aplikacji webowych jak Streamlit
+
+W tym projekcie używamy wersji headless, ponieważ Streamlit wyświetla obrazy w przeglądarce.
 
 ### Krok 4: Zainstaluj pakiety systemowe (Linux)
 

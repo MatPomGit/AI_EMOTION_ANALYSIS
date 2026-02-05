@@ -377,8 +377,19 @@ def start_analysis(mode, input_source):
             st.warning("Proszę przesłać plik wideo.")
             return
         
-        # Otwórz przesłany plik
-        cap = cv2.VideoCapture(file_path.name)
+        # POPRAWKA: Zapisz przesłany plik tymczasowo
+        # Streamlit file_uploader zwraca obiekt UploadedFile, nie ścieżkę
+        # Musimy zapisać plik tymczasowo, aby OpenCV mógł go odczytać
+        import tempfile
+        import os
+        
+        # Utwórz tymczasowy plik z odpowiednim rozszerzeniem
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_path.name)[1])
+        tfile.write(file_path.read())
+        tfile.close()
+        
+        # Otwórz tymczasowy plik
+        cap = cv2.VideoCapture(tfile.name)
 
     # Utwórz pusty kontener Streamlit do wyświetlania wideo
     stframe = st.empty()
@@ -570,8 +581,25 @@ def generate_report(mode):
 
     # KROK 7: Wywołaj Google Gemini AI do analizy
     # --------------------------------------------
-    # UWAGA: Ten klucz API powinien być przechowywany bezpiecznie (np. w zmiennych środowiskowych)
-    # Obecnie jest zakodowany na stałe, co NIE JEST BEZPIECZNE w produkcji!
+    # ⚠️ UWAGA BEZPIECZEŃSTWA! ⚠️
+    # Ten klucz API jest zakodowany na stałe w kodzie, co stanowi POWAŻNE zagrożenie bezpieczeństwa!
+    # W prawdziwych projektach NIGDY nie umieszczaj kluczy API w kodzie źródłowym!
+    #
+    # BEZPIECZNE ROZWIĄZANIA:
+    # 1. Użyj zmiennych środowiskowych:
+    #    import os
+    #    api_key = os.getenv('GEMINI_API_KEY')
+    #
+    # 2. Użyj pliku konfiguracyjnego (dodaj go do .gitignore):
+    #    import json
+    #    with open('config.json') as f:
+    #        config = json.load(f)
+    #    api_key = config['gemini_api_key']
+    #
+    # 3. Użyj Streamlit secrets:
+    #    api_key = st.secrets["gemini_api_key"]
+    #
+    # TODO dla studentów: Przenieś ten klucz do bezpiecznego miejsca!
     client = genai.Client(api_key="AIzaSyAFsZjer2IRBvB83I7FrPDVVMK484JLZsE")
     
     # Wyślij prompt do modelu Gemini
@@ -589,10 +617,29 @@ def generate_report(mode):
 
     # KROK 8: Przetwórz odpowiedź AI
     # -------------------------------
-    # Odpowiedź AI jest w formacie JSON, ale opakowana w znaczniki markdown
-    # Usuwamy pierwsze 8 znaków (```json\n) i ostatnie 4 znaki (\n```)
+    # Odpowiedź AI jest w formacie JSON, ale często opakowana w znaczniki markdown
+    # Bezpiecznie wyodrębnij JSON z odpowiedzi
     ans = response.text
-    ans = json.loads(ans[8:-4])  # Parsuj JSON na słownik Python
+    
+    # Usuń znaczniki markdown jeśli są obecne (np. ```json ... ```)
+    # Sprawdź czy odpowiedź zaczyna się od ``` i kończy na ```
+    if ans.startswith("```"):
+        # Znajdź początek i koniec znaczników
+        start = ans.find("{")  # Znajdź pierwszy nawias klamrowy
+        end = ans.rfind("}") + 1  # Znajdź ostatni nawias klamrowy
+        if start != -1 and end > start:
+            ans = ans[start:end]
+    
+    # Spróbuj sparsować JSON
+    try:
+        ans = json.loads(ans)  # Parsuj JSON na słownik Python
+    except json.JSONDecodeError as e:
+        # Jeśli parsowanie nie powiedzie się, wyświetl błąd i użyj domyślnych wartości
+        st.error(f"Nie udało się sparsować odpowiedzi AI: {e}")
+        ans = {
+            "behavior": "Nie można było przeanalizować zachowania",
+            "action": "Spróbuj ponownie przeprowadzić analizę"
+        }
     
     # KROK 9: Wyświetl analizę behawioralną AI
     # -----------------------------------------
