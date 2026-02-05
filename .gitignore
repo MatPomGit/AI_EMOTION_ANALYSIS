@@ -1,0 +1,101 @@
+# ==================================================================================
+# PLIK .gitignore - Co to jest i po co?
+# ==================================================================================
+# Ten plik mówi Git, które pliki i foldery należy IGNOROWAĆ (nie dodawać do repozytorium).
+# Ignorujemy pliki, które:
+# - Są generowane automatycznie przez program
+# - Zawierają dane osobiste lub klucze API
+# - Są specyficzne dla naszego komputera
+# - Są zbyt duże lub niepotrzebne dla innych użytkowników
+
+# PLIKI PYTHONA
+# ==================================================================================
+
+# Skompilowany kod Python (pliki .pyc)
+# Python kompiluje kod do bytecode przed uruchomieniem - te pliki są generowane automatycznie
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Dystrybucje i pakiety
+# Pliki tworzone podczas budowania pakietu do dystrybucji
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.whl
+
+# Środowiska wirtualne Python
+# Izolowane środowiska z zainstalowanymi bibliotekami - każdy tworzy swoje lokalnie
+venv/
+env/
+ENV/
+.venv
+
+# PLIKI IDE I EDYTORÓW
+# ==================================================================================
+
+# Visual Studio Code
+.vscode/
+
+# PyCharm
+.idea/
+*.iml
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# PLIKI SYSTEMU OPERACYJNEGO
+# ==================================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# PLIKI PROJEKTU
+# ==================================================================================
+
+# Pliki wideo używane do testowania (mogą być duże)
+*.mp4
+*.avi
+*.mov
+
+# Pliki z kluczami API i hasłami (NIGDY nie commituj haseł!)
+.env
+*.key
+secrets.json
+
+# Pliki logów
+*.log
+
+# Wygenerowane raporty
+reports/
+*.csv
+*.pdf
+
+# Pliki tymczasowe
+tmp/
+temp/
+*.tmp
