@@ -1,245 +1,713 @@
-import cv2
-import numpy as np
-import streamlit as st
-from deepface import DeepFace
-import mediapipe as mp
-import datetime
-import json
-from google import genai
+# ==================================================================================
+# ANALIZATOR EMOCJI I ZACHOWANIA - Główny plik aplikacji
+# ==================================================================================
+# Ten program analizuje emocje i zachowania człowieka na podstawie wideo używając
+# zaawansowanych bibliotek sztucznej inteligencji.
+#
+# Autor: MatPomGit
+# Przeznaczenie: Projekt edukacyjny dla studentów uczących się AI i Python
+# ==================================================================================
 
-# Initialize MediaPipe solutions
-mp_hands = mp.solutions.hands
-mp_face_mesh = mp.solutions.face_mesh
-mp_drawing = mp.solutions.drawing_utils
+# SEKCJA 1: IMPORTOWANIE BIBLIOTEK
+# ==================================================================================
+# W tej sekcji importujemy wszystkie potrzebne biblioteki (moduły) do działania programu.
+# Każda biblioteka dostarcza konkretne funkcjonalności.
 
-# Global variables for behavior analysis
+import cv2  # OpenCV - biblioteka do przetwarzania obrazów i wideo
+            # cv2 pozwala na: odczyt wideo, manipulację obrazami, rysowanie na obrazach
+
+import numpy as np  # NumPy - biblioteka do operacji na tablicach numerycznych
+                    # np używamy do obliczeń matematycznych na dużych zbiorach danych
+
+import streamlit as st  # Streamlit - framework do tworzenia aplikacji webowych
+                        # st pozwala na szybkie stworzenie interfejsu użytkownika
+
+from deepface import DeepFace  # DeepFace - biblioteka do rozpoznawania emocji na twarzy
+                                # DeepFace wykorzystuje głębokie sieci neuronowe
+
+import mediapipe as mp  # MediaPipe - biblioteka Google do analizy multimedialnej
+                        # mp dostarcza gotowe rozwiązania do wykrywania twarzy i dłoni
+
+import datetime  # datetime - wbudowana biblioteka do pracy z datą i czasem
+                # Używamy jej do oznaczania czasu w raportach
+
+import json  # json - wbudowana biblioteka do pracy z formatem JSON
+            # JSON to format przechowywania danych, używamy go do komunikacji z API
+
+from google import genai  # Google Generative AI - API do generowania analiz przez AI
+                          # genai pozwala nam używać modeli AI Google (np. Gemini)
+
+# SEKCJA 2: INICJALIZACJA NARZĘDZI MEDIAPIPE
+# ==================================================================================
+# MediaPipe oferuje gotowe rozwiązania (solutions) do różnych zadań.
+# Musimy je zainicjalizować przed użyciem.
+
+mp_hands = mp.solutions.hands  # Rozwiązanie do wykrywania dłoni
+                               # Wykrywa 21 punktów charakterystycznych na dłoni
+
+mp_face_mesh = mp.solutions.face_mesh  # Rozwiązanie do wykrywania siatki twarzy
+                                       # Wykrywa 468 punktów charakterystycznych na twarzy
+
+mp_drawing = mp.solutions.drawing_utils  # Narzędzia do rysowania punktów na obrazie
+                                         # Używamy tego do wizualizacji wykrytych punktów
+
+# SEKCJA 3: ZMIENNE GLOBALNE - PRZECHOWYWANIE DANYCH ANALIZY
+# ==================================================================================
+# Streamlit używa "session_state" do przechowywania danych między kolejnymi
+# odświeżeniami strony. To jak "pamięć" aplikacji.
+# Wszystkie dane zbierane podczas analizy są tutaj zapisywane.
+
+# Raport z analizy behawioralnej - lista wszystkich zdarzeń podczas analizy
 if "behavior_report" not in st.session_state:
-    st.session_state.behavior_report = []
+    st.session_state.behavior_report = []  # Pusta lista na rozpoczęcie
+
+# Sumy procentowe wszystkich emocji wykrytych w każdej klatce
+# Kluczami są nazwy emocji, wartościami - suma procentów ze wszystkich klatek
 if "emotion_totals" not in st.session_state:
-    st.session_state.emotion_totals = {"happy": 0, "sad": 0, "angry": 0, "surprise": 0, "fear": 0, "disgust": 0, "neutral": 0}
+    st.session_state.emotion_totals = {
+        "happy": 0,      # Radość
+        "sad": 0,        # Smutek
+        "angry": 0,      # Złość
+        "surprise": 0,   # Zaskoczenie
+        "fear": 0,       # Strach
+        "disgust": 0,    # Wstręt
+        "neutral": 0     # Neutralność
+    }
+
+# Licznik przeanalizowanych klatek wideo
+# Potrzebny do obliczenia średniej wartości emocji
 if "frame_count" not in st.session_state:
     st.session_state.frame_count = 0
-if "hand_gesture_count" not in st.session_state:
-    st.session_state.hand_gesture_count = {"tense": 0, "relaxed": 0}
-if "eye_direction_count" not in st.session_state:
-    st.session_state.eye_direction_count = {"left": 0, "right": 0, "center": 0}
-if "head_movement_count" not in st.session_state:
-    st.session_state.head_movement_count = {"up": 0, "down": 0, "still": 0}
 
-# State to control the camera
+# Liczniki gestów dłoni wykrytych podczas analizy
+if "hand_gesture_count" not in st.session_state:
+    st.session_state.hand_gesture_count = {
+        "tense": 0,      # Napięte gesty (palce zaciśnięte)
+        "relaxed": 0     # Rozluźnione gesty (palce rozluźnione)
+    }
+
+# Liczniki kierunku spojrzenia wykrytego podczas analizy
+if "eye_direction_count" not in st.session_state:
+    st.session_state.eye_direction_count = {
+        "left": 0,       # Spojrzenie w lewo
+        "right": 0,      # Spojrzenie w prawo
+        "center": 0      # Spojrzenie prosto
+    }
+
+# Liczniki ruchów głowy wykrytych podczas analizy
+if "head_movement_count" not in st.session_state:
+    st.session_state.head_movement_count = {
+        "up": 0,         # Głowa w górę
+        "down": 0,       # Głowa w dół
+        "still": 0       # Głowa nieruchomo
+    }
+
+# Flaga kontrolująca czy kamera/analiza jest aktywna
+# True = analiza trwa, False = analiza zatrzymana
 if "camera_running" not in st.session_state:
     st.session_state.camera_running = False
 
 
-# Function to log data to the report
+# SEKCJA 4: FUNKCJE POMOCNICZE
+# ==================================================================================
+# W tej sekcji definiujemy funkcje, które wykonują konkretne zadania.
+# Podział na funkcje sprawia, że kod jest bardziej czytelny i łatwiejszy w utrzymaniu.
+
+# FUNKCJA 1: Logowanie danych do raportu
+# ==================================================================================
 def log_to_report(mode, analysis):
+    """
+    Zapisuje dane do raportu behawioralnego z aktualnym znacznikiem czasu.
+    
+    Parametry:
+    ----------
+    mode : str
+        Tryb analizy (np. "Detective", "Student Behavior", "Interview")
+    analysis : str
+        Tekst z wynikiem analizy do zapisania w raporcie
+        
+    Działanie:
+    ----------
+    1. Pobiera aktualny czas
+    2. Formatuje go do czytelnej postaci (RRRR-MM-DD GG:MM:SS)
+    3. Dodaje wpis do listy raportów w pamięci aplikacji
+    
+    Przykład użycia:
+    ----------------
+    log_to_report("Detective", "Wykryto emocję: radość (85%)")
+    """
+    # Pobierz aktualną datę i czas
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Dodaj sformatowany wpis do listy raportów
+    # Format: "2024-01-15 14:30:45 - Detective: Wykryto emocję: radość (85%)"
     st.session_state.behavior_report.append(f"{timestamp} - {mode}: {analysis}")
 
 
-# Function to analyze emotion using DeepFace
+# FUNKCJA 2: Analiza emocji za pomocą DeepFace
+# ==================================================================================
 def analyze_emotion(frame):
+    """
+    Analizuje emocje widoczne na twarzy w pojedynczej klatce wideo.
+    
+    Parametry:
+    ----------
+    frame : numpy.ndarray
+        Pojedyncza klatka wideo (obraz) w formacie OpenCV (BGR)
+        
+    Zwraca:
+    -------
+    dict
+        Słownik z wynikami analizy, gdzie:
+        - klucze to nazwy emocji (np. "happy", "sad")
+        - wartości to procentowe prawdopodobieństwo dla każdej emocji (0-100)
+        
+    Działanie:
+    ----------
+    1. DeepFace.analyze() przetwarza obraz
+    2. Wykrywa twarz na obrazie (jeśli jest)
+    3. Analizuje cechy twarzy (kształt ust, oczu, brwi)
+    4. Porównuje z wytrenowanym modelem sieci neuronowej
+    5. Zwraca prawdopodobieństwa dla każdej z 7 emocji
+    
+    Uwaga:
+    ------
+    enforce_detection=False sprawia, że funkcja nie zgłasza błędu,
+    jeśli nie wykryje twarzy - zamiast tego zwraca neutralne wyniki
+    """
+    # Wywołaj analizę DeepFace na bieżącej klatce
+    # actions=['emotion'] - analizujemy tylko emocje (nie wiek, płeć, rasę)
     result = DeepFace.analyze(frame, actions=['emotion'], enforce_detection=False)
+    
+    # Wyciągnij słownik z wynikami emocji z wyniku analizy
+    # result[0] bo DeepFace może zwracać listę wyników (dla wielu twarzy)
     emotion_scores = result[0]['emotion']
+    
     return emotion_scores
 
 
-# Function to analyze hand gestures
+# FUNKCJA 3: Analiza gestów dłoni za pomocą MediaPipe
+# ==================================================================================
 def analyze_hands(frame, hands):
+    """
+    Analizuje gesty dłoni widoczne w klatce wideo.
+    
+    Parametry:
+    ----------
+    frame : numpy.ndarray
+        Pojedyncza klatka wideo (obraz) w formacie OpenCV (BGR)
+    hands : mediapipe.solutions.hands.Hands
+        Zainicjalizowany obiekt MediaPipe Hands do wykrywania dłoni
+        
+    Działanie:
+    ----------
+    1. Konwertuje obraz z BGR (OpenCV) do RGB (MediaPipe)
+    2. Wykrywa dłonie i ich punkty charakterystyczne (21 punktów na dłoń)
+    3. Dla każdej wykrytej dłoni:
+       - Mierzy odległość między kciukiem a palcem wskazującym
+       - Jeśli odległość < 0.1: gest napięty (palce zaciśnięte)
+       - Jeśli odległość >= 0.1: gest rozluźniony (palce rozluźnione)
+    4. Rysuje punkty i połączenia na obrazie (wizualizacja)
+    5. Aktualizuje liczniki gestów w pamięci aplikacji
+    
+    Uwaga:
+    ------
+    MediaPipe wymaga obrazu w formacie RGB, a OpenCV używa BGR,
+    dlatego konwertujemy kolory przed przetwarzaniem
+    """
+    # Konwersja z BGR (format OpenCV) na RGB (format MediaPipe)
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    # Przetwórz klatkę przez MediaPipe Hands
     results = hands.process(frame_rgb)
 
+    # Sprawdź czy wykryto jakiekolwiek dłonie
     if results.multi_hand_landmarks:
+        # Iteruj przez wszystkie wykryte dłonie
         for hand_landmarks in results.multi_hand_landmarks:
-            # Example: Check if the hand is tense (fingers closed) or relaxed (fingers open)
+            # Pobierz współrzędne kciuka (punkt 4 z 21 punktów dłoni)
+            # HandLandmark.THUMB_TIP to stała określająca czubek kciuka
             thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+            
+            # Pobierz współrzędne czubka palca wskazującego (punkt 8)
             index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            
+            # Oblicz odległość między kciukiem a palcem wskazującym
+            # Używamy zarówno odległości w poziomie (x) jak i pionie (y)
             distance = abs(thumb_tip.x - index_tip.x) + abs(thumb_tip.y - index_tip.y)
 
+            # Klasyfikacja gestu na podstawie odległości
             if distance < 0.1:
+                # Mała odległość = palce blisko siebie = gest napięty
                 st.session_state.hand_gesture_count["tense"] += 1
             else:
+                # Duża odległość = palce daleko od siebie = gest rozluźniony
                 st.session_state.hand_gesture_count["relaxed"] += 1
 
-            # Draw hand landmarks on the frame
+            # Narysuj punkty charakterystyczne dłoni i połączenia między nimi
+            # HAND_CONNECTIONS to predefiniowana lista połączeń między punktami
             mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
 
-# Function to analyze eye direction and head movement
+# FUNKCJA 4: Analiza kierunku spojrzenia i ruchów głowy
+# ==================================================================================
 def analyze_face(frame, face_mesh):
+    """
+    Analizuje kierunek spojrzenia oczu i ruchy głowy w klatce wideo.
+    
+    Parametry:
+    ----------
+    frame : numpy.ndarray
+        Pojedyncza klatka wideo (obraz) w formacie OpenCV (BGR)
+    face_mesh : mediapipe.solutions.face_mesh.FaceMesh
+        Zainicjalizowany obiekt MediaPipe Face Mesh do wykrywania twarzy
+        
+    Działanie:
+    ----------
+    1. Konwertuje obraz z BGR na RGB
+    2. Wykrywa twarz i jej punkty charakterystyczne (468 punktów)
+    3. Analizuje kierunek oczu:
+       - Punkt 33: lewe oko
+       - Punkt 263: prawe oko
+       - Na podstawie pozycji x określa kierunek spojrzenia
+    4. Analizuje pozycję głowy:
+       - Punkt 4: czubek nosa
+       - Na podstawie pozycji y określa ruch głowy (góra/dół/nieruchomo)
+    5. Rysuje siatkę twarzy na obrazie (wizualizacja)
+    6. Aktualizuje liczniki w pamięci aplikacji
+    
+    Uwaga:
+    ------
+    Współrzędne są znormalizowane (0.0 - 1.0):
+    - x=0.0 to lewa krawędź obrazu, x=1.0 to prawa krawędź
+    - y=0.0 to górna krawędź obrazu, y=1.0 to dolna krawędź
+    """
+    # Konwersja z BGR (format OpenCV) na RGB (format MediaPipe)
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    # Przetwórz klatkę przez MediaPipe Face Mesh
     results = face_mesh.process(frame_rgb)
 
+    # Sprawdź czy wykryto jakąkolwiek twarz
     if results.multi_face_landmarks:
+        # Iteruj przez wszystkie wykryte twarze (zazwyczaj jedna)
         for face_landmarks in results.multi_face_landmarks:
-            # Example: Check eye direction (left, right, center)
+            # ANALIZA KIERUNKU SPOJRZENIA
+            # ----------------------------
+            # Pobierz współrzędne lewego oka (punkt 33 z 468 punktów siatki)
             left_eye = face_landmarks.landmark[33]
+            
+            # Pobierz współrzędne prawego oka (punkt 263)
             right_eye = face_landmarks.landmark[263]
 
+            # Określ kierunek spojrzenia na podstawie pozycji oczu
             if left_eye.x < 0.4:
+                # Lewe oko jest bardzo na lewo -> osoba patrzy w lewo
                 st.session_state.eye_direction_count["left"] += 1
             elif right_eye.x > 0.6:
+                # Prawe oko jest bardzo na prawo -> osoba patrzy w prawo
                 st.session_state.eye_direction_count["right"] += 1
             else:
+                # Oczy są mniej więcej centralnie -> osoba patrzy prosto
                 st.session_state.eye_direction_count["center"] += 1
 
-            # Example: Check head movement (up, down, still)
-            nose_tip = face_landmarks.landmark[4]  # Nose tip landmark
+            # ANALIZA RUCHÓW GŁOWY
+            # ---------------------
+            # Pobierz współrzędne czubka nosa (punkt 4) - środkowy punkt twarzy
+            nose_tip = face_landmarks.landmark[4]
+            
+            # Określ pozycję głowy na podstawie współrzędnej y nosa
             if nose_tip.y < 0.4:
+                # Nos jest wysoko -> głowa podniesiona w górę
                 st.session_state.head_movement_count["up"] += 1
             elif nose_tip.y > 0.6:
+                # Nos jest nisko -> głowa opuszczona w dół
                 st.session_state.head_movement_count["down"] += 1
             else:
+                # Nos jest mniej więcej centralnie -> głowa w pozycji neutralnej
                 st.session_state.head_movement_count["still"] += 1
 
-            # Draw face landmarks on the frame
+            # Narysuj siatkę twarzy na obrazie
+            # FACEMESH_CONTOURS to zestaw linii tworzących kontur twarzy
             mp_drawing.draw_landmarks(frame, face_landmarks, mp_face_mesh.FACEMESH_CONTOURS)
 
 
-# Function to start analysis based on the selected mode and input source
+# FUNKCJA 5: Rozpoczęcie analizy wideo (główna pętla programu)
+# ==================================================================================
 def start_analysis(mode, input_source):
+    """
+    Uruchamia główną pętlę analizy wideo z kamery lub pliku.
+    
+    Parametry:
+    ----------
+    mode : str
+        Tryb analizy: "Detective", "Student Behavior" lub "Interview"
+    input_source : str
+        Źródło wideo: "camera" (kamera) lub "video" (plik)
+        
+    Działanie:
+    ----------
+    1. Otwiera źródło wideo (kamera lub plik)
+    2. Inicjalizuje narzędzia MediaPipe do analizy dłoni i twarzy
+    3. Wchodzi w pętlę przetwarzania klatek:
+       - Odczytuje kolejną klatkę
+       - Analizuje emocje (DeepFace)
+       - Analizuje gesty dłoni (MediaPipe)
+       - Analizuje kierunek oczu i ruchy głowy (MediaPipe)
+       - Wyświetla wyniki na obrazie
+       - Loguje dane do raportu
+    4. Po zakończeniu generuje raport
+    
+    Uwaga:
+    ------
+    Pętla działa dopóki st.session_state.camera_running == True
+    Użytkownik zatrzymuje analizę przyciskiem "Stop Analysis"
+    """
+    # KROK 1: Otwórz źródło wideo
+    # ----------------------------
     if input_source == "camera":
+        # Otwórz domyślną kamerę (0 = pierwsza kamera w systemie)
         cap = cv2.VideoCapture(0)
     else:
-        file_path = st.file_uploader("Upload a video file", type=["mp4", "avi", "mov"])
+        # Pozwól użytkownikowi przesłać plik wideo
+        file_path = st.file_uploader("Prześlij plik wideo", type=["mp4", "avi", "mov"])
+        
+        # Sprawdź czy plik został przesłany
         if file_path is None:
-            st.warning("Please upload a video file.")
+            st.warning("Proszę przesłać plik wideo.")
             return
+        
+        # Otwórz przesłany plik
         cap = cv2.VideoCapture(file_path.name)
 
-    stframe = st.empty()  # Streamlit placeholder for the video frame
+    # Utwórz pusty kontener Streamlit do wyświetlania wideo
+    stframe = st.empty()
 
+    # KROK 2: Zainicjalizuj narzędzia MediaPipe
+    # ------------------------------------------
+    # Używamy kontekstu "with" aby automatycznie zwolnić zasoby po zakończeniu
     with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7) as hands, \
             mp_face_mesh.FaceMesh(min_detection_confidence=0.7, min_tracking_confidence=0.7) as face_mesh:
+        
+        # min_detection_confidence=0.7 oznacza, że wykrywanie musi mieć
+        # pewność co najmniej 70%, aby uznać coś za dłoń/twarz
+        
+        # min_tracking_confidence=0.7 oznacza, że śledzenie musi mieć
+        # pewność co najmniej 70%, aby kontynuować śledzenie tego samego obiektu
 
+        # KROK 3: Główna pętla przetwarzania klatek
+        # ------------------------------------------
         while st.session_state.camera_running and cap.isOpened():
+            # Odczytaj kolejną klatkę z wideo
+            # ret = True jeśli klatka została odczytana poprawnie
+            # frame = tablica NumPy zawierająca obraz (klatkę)
             ret, frame = cap.read()
+            
+            # Jeśli nie udało się odczytać klatki (koniec wideo), przerwij pętlę
             if not ret:
                 break
 
-            # Analyze the emotion using DeepFace
+            # ANALIZA EMOCJI
+            # --------------
+            # Analizuj emocje widoczne na twarzy w bieżącej klatce
             emotion_scores = analyze_emotion(frame)
 
-            # Accumulate the emotion percentages over time (for each frame)
+            # Dodaj wyniki emocji do sum całkowitych (do obliczenia średniej później)
             for emotion, score in emotion_scores.items():
                 st.session_state.emotion_totals[emotion] += score
+            
+            # Zwiększ licznik przeanalizowanych klatek
             st.session_state.frame_count += 1
 
-            # Analyze hand gestures
+            # ANALIZA GESTÓW DŁONI
+            # ---------------------
             analyze_hands(frame, hands)
 
-            # Analyze eye direction and head movement
+            # ANALIZA TWARZY (oczy i głowa)
+            # ------------------------------
             analyze_face(frame, face_mesh)
 
-            # Find the dominant emotion
+            # OKREŚLENIE DOMINUJĄCEJ EMOCJI
+            # ------------------------------
+            # Znajdź emocję z najwyższym wynikiem w bieżącej klatce
             dominant_emotion = max(emotion_scores, key=emotion_scores.get)
             dominant_emotion_score = emotion_scores[dominant_emotion]
 
-            # Display the dominant emotion and its percentage
+            # WIZUALIZACJA WYNIKÓW NA OBRAZIE
+            # --------------------------------
+            # Wyświetl dominującą emocję na górze obrazu
             emotion_text = f"{dominant_emotion}: {dominant_emotion_score:.2f}%"
-            frame = cv2.putText(frame, emotion_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            frame = cv2.putText(frame, emotion_text, (50, 50), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            
+            # cv2.putText() parametry:
+            # - frame: obraz na którym rysujemy
+            # - emotion_text: tekst do wyświetlenia
+            # - (50, 50): pozycja x, y tekstu
+            # - cv2.FONT_HERSHEY_SIMPLEX: typ czcionki
+            # - 1: rozmiar czcionki
+            # - (0, 255, 0): kolor BGR (zielony)
+            # - 2: grubość linii
 
-            # Display the percentages for all emotions
-            y_offset = 100
+            # Wyświetl wszystkie emocje z ich procentami
+            y_offset = 100  # Początkowa pozycja y dla pierwszej emocji
             for emotion, score in emotion_scores.items():
-                frame = cv2.putText(frame, f"{emotion}: {score:.2f}%", (50, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                                    (0, 255, 0), 2)
-                y_offset += 30
+                frame = cv2.putText(frame, f"{emotion}: {score:.2f}%", 
+                                  (50, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 
+                                  0.7, (0, 255, 0), 2)
+                y_offset += 30  # Przesuń pozycję y o 30 pikseli dla kolejnej emocji
 
-            # Mode-based behavior analysis
+            # LOGOWANIE DO RAPORTU
+            # --------------------
+            # Zapisz wynik analizy do raportu (w zależności od trybu)
             if mode == "Detective":
-                log_to_report(mode, f"Detecting: {dominant_emotion} ({dominant_emotion_score:.2f}%)")
+                log_to_report(mode, f"Wykrywanie: {dominant_emotion} ({dominant_emotion_score:.2f}%)")
             elif mode == "Student Behavior":
-                log_to_report(mode, f"Tracking: {dominant_emotion} ({dominant_emotion_score:.2f}%)")
+                log_to_report(mode, f"Śledzenie: {dominant_emotion} ({dominant_emotion_score:.2f}%)")
             elif mode == "Interview":
-                log_to_report(mode, f"Analyzing: {dominant_emotion} ({dominant_emotion_score:.2f}%)")
+                log_to_report(mode, f"Analiza: {dominant_emotion} ({dominant_emotion_score:.2f}%)")
 
-            # Display the frame with the predicted emotion and percentages
+            # WYŚWIETLENIE KLATKI W APLIKACJI STREAMLIT
+            # ------------------------------------------
+            # Wyświetl przetworzoną klatkę z nałożonymi adnotacjami
             stframe.image(frame, channels="BGR", use_container_width=True)
+            
+            # channels="BGR" - OpenCV używa BGR zamiast RGB
+            # use_container_width=True - dostosuj szerokość do kontenera
 
+            # Sprawdź czy naciśnięto klawisz 'q' (opcjonalne zatrzymanie)
             if cv2.waitKey(10) & 0xFF == ord('q'):
                 break
 
-    cap.release()
-    cv2.destroyAllWindows()
+    # KROK 4: Zwolnij zasoby
+    # -----------------------
+    cap.release()  # Zamknij strumień wideo
+    cv2.destroyAllWindows()  # Zamknij wszystkie okna OpenCV
 
-    # Generate the report based on accumulated emotions and body language
+    # KROK 5: Wygeneruj raport końcowy
+    # ---------------------------------
     generate_report(mode)
 
 
-# Function to generate the report and display it in Streamlit
+# FUNKCJA 6: Generowanie i wyświetlanie raportu końcowego
+# ==================================================================================
 def generate_report(mode):
-    if st.session_state.frame_count == 0:  # Avoid division by zero
+    """
+    Generuje szczegółowy raport z analizy emocji i zachowania.
+    
+    Parametry:
+    ----------
+    mode : str
+        Tryb analizy, który został użyty
+        
+    Działanie:
+    ----------
+    1. Oblicza średnie wartości emocji ze wszystkich klatek
+    2. Wyświetla statystyki emocji
+    3. Wyświetla statystyki gestów, kierunku oczu i ruchów głowy
+    4. Wysyła dane do Google Gemini AI w celu uzyskania analizy behawioralnej
+    5. Wyświetla sugestie AI dotyczące zachowania
+    
+    Uwaga:
+    ------
+    Ta funkcja używa API Google Gemini, które wymaga klucza API.
+    Klucz jest zakodowany na stałe w kodzie (nie zalecane w produkcji!)
+    """
+    # KROK 1: Zabezpieczenie przed dzieleniem przez zero
+    # ---------------------------------------------------
+    if st.session_state.frame_count == 0:
         st.session_state.frame_count = 1
 
-    # Calculate the average percentage for each emotion
-    average_emotion_scores = {emotion: score / st.session_state.frame_count for emotion, score in st.session_state.emotion_totals.items()}
+    # KROK 2: Oblicz średnie wartości emocji
+    # ---------------------------------------
+    # Dla każdej emocji, podziel sumę przez liczbę klatek
+    # Otrzymujemy średnią wartość procentową dla każdej emocji w całym wideo
+    average_emotion_scores = {
+        emotion: score / st.session_state.frame_count 
+        for emotion, score in st.session_state.emotion_totals.items()
+    }
 
-    # Write the report content
-    st.subheader("Emotion & Behavior Analysis Report")
+    # KROK 3: Wyświetl nagłówek raportu
+    # ----------------------------------
+    st.subheader("Raport Analizy Emocji i Zachowania")
     st.write("=" * 40)
 
-    # Write the emotion percentages
-    st.write(f"Analysis Mode: {mode}\n")
+    # KROK 4: Wyświetl wyniki analizy emocji
+    # ---------------------------------------
+    st.write(f"Tryb analizy: {mode}\n")
+    st.write("ŚREDNIE WARTOŚCI EMOCJI:")
     for emotion, score in average_emotion_scores.items():
+        # Wyświetl nazwę emocji z wielkiej litery i jej średni procent
         st.write(f"{emotion.capitalize()}: {score:.2f}%")
 
-    # Write the body language analysis
-    st.write("\nBody Language Analysis:")
-    st.write(f"Tense Hand Gestures: {st.session_state.hand_gesture_count['tense']}")
-    st.write(f"Relaxed Hand Gestures: {st.session_state.hand_gesture_count['relaxed']}")
-    st.write(f"Eye Direction (Left): {st.session_state.eye_direction_count['left']}")
-    st.write(f"Eye Direction (Right): {st.session_state.eye_direction_count['right']}")
-    st.write(f"Eye Direction (Center): {st.session_state.eye_direction_count['center']}")
-    st.write(f"Head Movement (Up): {st.session_state.head_movement_count['up']}")
-    st.write(f"Head Movement (Down): {st.session_state.head_movement_count['down']}")
-    st.write(f"Head Movement (Still): {st.session_state.head_movement_count['still']}")
+    # KROK 5: Wyświetl analizę mowy ciała
+    # ------------------------------------
+    st.write("\nAnaliza Mowy Ciała:")
+    st.write(f"Napięte Gesty Dłoni: {st.session_state.hand_gesture_count['tense']}")
+    st.write(f"Rozluźnione Gesty Dłoni: {st.session_state.hand_gesture_count['relaxed']}")
+    st.write(f"Kierunek Oczu (Lewo): {st.session_state.eye_direction_count['left']}")
+    st.write(f"Kierunek Oczu (Prawo): {st.session_state.eye_direction_count['right']}")
+    st.write(f"Kierunek Oczu (Centrum): {st.session_state.eye_direction_count['center']}")
+    st.write(f"Ruchy Głowy (Góra): {st.session_state.head_movement_count['up']}")
+    st.write(f"Ruchy Głowy (Dół): {st.session_state.head_movement_count['down']}")
+    st.write(f"Ruchy Głowy (Nieruchomo): {st.session_state.head_movement_count['still']}")
 
+    # KROK 6: Przygotuj dane do analizy AI
+    # -------------------------------------
+    # Utwórz tekstowy opis wszystkich zebranych danych
     analysis = ""
     for emotion, score in average_emotion_scores.items():
         analysis += f"{emotion.capitalize()}: {score:.2f}%\n"
 
-    analysis += f"Tense Hand Gestures: {st.session_state.hand_gesture_count['tense']}\nRelaxed Hand Gestures: {st.session_state.hand_gesture_count['relaxed']}\nEye Direction (Left): {st.session_state.eye_direction_count['left']}\nEye Direction (Right): {st.session_state.eye_direction_count['right']}\nEye Direction (Center): {st.session_state.eye_direction_count['center']}\nHead Movement (Up): {st.session_state.head_movement_count['up']}\nHead Movement (Down): {st.session_state.head_movement_count['down']}\nHead Movement (Still): {st.session_state.head_movement_count['still']}\n"
+    analysis += f"Napięte Gesty Dłoni: {st.session_state.hand_gesture_count['tense']}\n"
+    analysis += f"Rozluźnione Gesty Dłoni: {st.session_state.hand_gesture_count['relaxed']}\n"
+    analysis += f"Kierunek Oczu (Lewo): {st.session_state.eye_direction_count['left']}\n"
+    analysis += f"Kierunek Oczu (Prawo): {st.session_state.eye_direction_count['right']}\n"
+    analysis += f"Kierunek Oczu (Centrum): {st.session_state.eye_direction_count['center']}\n"
+    analysis += f"Ruchy Głowy (Góra): {st.session_state.head_movement_count['up']}\n"
+    analysis += f"Ruchy Głowy (Dół): {st.session_state.head_movement_count['down']}\n"
+    analysis += f"Ruchy Głowy (Nieruchomo): {st.session_state.head_movement_count['still']}\n"
 
-    # Gemini API call
+    # KROK 7: Wywołaj Google Gemini AI do analizy
+    # --------------------------------------------
+    # UWAGA: Ten klucz API powinien być przechowywany bezpiecznie (np. w zmiennych środowiskowych)
+    # Obecnie jest zakodowany na stałe, co NIE JEST BEZPIECZNE w produkcji!
     client = genai.Client(api_key="AIzaSyAFsZjer2IRBvB83I7FrPDVVMK484JLZsE")
+    
+    # Wyślij prompt do modelu Gemini
     response = client.models.generate_content(
-        model="gemini-2.0-flash", contents=f"""Based on this Emotion & Behavior Analysis for a {mode}: {analysis}, 
-    use this JSON format to structure the output:
+        model="gemini-2.0-flash",  # Model AI do użycia
+        contents=f"""Na podstawie tej Analizy Emocji i Zachowania dla trybu {mode}: {analysis}, 
+    użyj formatu JSON do ustrukturyzowania odpowiedzi:
 
     {{
-        "behavior": "describe overall behavior based on the analysis",
-        "action": "suggest appropriate action"
+        "behavior": "opisz ogólne zachowanie na podstawie analizy",
+        "action": "zasugeruj odpowiednie działanie"
     }}
     """
     )
 
+    # KROK 8: Przetwórz odpowiedź AI
+    # -------------------------------
+    # Odpowiedź AI jest w formacie JSON, ale opakowana w znaczniki markdown
+    # Usuwamy pierwsze 8 znaków (```json\n) i ostatnie 4 znaki (\n```)
     ans = response.text
-    ans = json.loads(ans[8:-4])
-    st.write("\nBehavioral Analysis:")
-    st.write(f"Behavior: {ans['behavior']}")
-    st.write(f"Suggested action: {ans['action']}")
+    ans = json.loads(ans[8:-4])  # Parsuj JSON na słownik Python
+    
+    # KROK 9: Wyświetl analizę behawioralną AI
+    # -----------------------------------------
+    st.write("\nAnaliza Behawioralna (wygenerowana przez AI):")
+    st.write(f"Zachowanie: {ans['behavior']}")
+    st.write(f"Sugerowane działanie: {ans['action']}")
 
-    st.write("\nAnalysis Completed.")
+    st.write("\nAnaliza Zakończona.")
+    st.write("=" * 40)
 
 
-# Streamlit UI
-st.title("Emotion & Behavior Analyzer")
-st.sidebar.header("Settings")
+# ==================================================================================
+# SEKCJA 5: INTERFEJS UŻYTKOWNIKA STREAMLIT
+# ==================================================================================
+# Poniższy kod tworzy interfejs webowy aplikacji przy użyciu Streamlit.
+# Streamlit automatycznie generuje elementy UI na podstawie poniższych komend.
 
-# Mode selection
-mode = st.sidebar.selectbox("Select Mode", ["Detective", "Student Behavior", "Interview"])
+# NAGŁÓWEK GŁÓWNY APLIKACJI
+# --------------------------
+st.title("Analizator Emocji i Zachowania")
+# Wyświetla duży, wyróżniony tytuł na górze strony
 
-# Input source selection
-input_source = st.sidebar.radio("Select Input Source", ["camera", "video"])
+# PANEL BOCZNY (SIDEBAR) - USTAWIENIA
+# ------------------------------------
+st.sidebar.header("Ustawienia")
+# Tworzy nagłówek w panelu bocznym po lewej stronie
 
-# Start analysis button
-if st.sidebar.button("Start Analysis"):
+# Element 1: Wybór trybu analizy
+# -------------------------------
+mode = st.sidebar.selectbox(
+    "Wybierz Tryb Analizy", 
+    ["Detective", "Student Behavior", "Interview"]
+)
+# selectbox tworzy listę rozwijaną (dropdown) z opcjami do wyboru
+# Wartość wybranej opcji jest zapisywana w zmiennej "mode"
+# 
+# Wyjaśnienie trybów:
+# - Detective: Tryb ogólny do wykrywania emocji
+# - Student Behavior: Tryb do monitorowania uwagi studenta
+# - Interview: Tryb do analizy podczas rozmowy kwalifikacyjnej
+
+# Element 2: Wybór źródła wideo
+# ------------------------------
+input_source = st.sidebar.radio(
+    "Wybierz Źródło Wideo", 
+    ["camera", "video"]
+)
+# radio tworzy przyciski opcji (radio buttons)
+# Użytkownik może wybrać tylko jedną opcję
+# 
+# Opcje:
+# - camera: Użyj kamery internetowej w czasie rzeczywistym
+# - video: Prześlij plik wideo z dysku
+
+# Element 3: Przycisk rozpoczęcia analizy
+# ----------------------------------------
+if st.sidebar.button("Rozpocznij Analizę"):
+    # button tworzy przycisk klikalny
+    # Kod wewnątrz if wykona się tylko gdy użytkownik kliknie przycisk
+    
+    # Ustaw flagę na True - rozpocznij analizę
     st.session_state.camera_running = True
+    
+    # Wywołaj funkcję główną rozpoczynającą przetwarzanie wideo
     start_analysis(mode, input_source)
 
-# Stop analysis button
-if st.sidebar.button("Stop Analysis"):
+# Element 4: Przycisk zatrzymania analizy
+# ----------------------------------------
+if st.sidebar.button("Zatrzymaj Analizę"):
+    # Ten przycisk zatrzymuje przetwarzanie wideo
+    
+    # Ustaw flagę na False - zatrzymaj analizę
     st.session_state.camera_running = False
-    st.success("Analysis stopped. Generating report...")
+    
+    # Wyświetl komunikat sukcesu dla użytkownika
+    st.success("Analiza zatrzymana. Generowanie raportu...")
+    
+    # Wygeneruj i wyświetl raport końcowy
     generate_report(mode)
+
+# ==================================================================================
+# KONIEC PROGRAMU
+# ==================================================================================
+# 
+# JAK DZIAŁA STREAMLIT?
+# ----------------------
+# 1. Streamlit wykonuje cały skrypt od góry do dołu
+# 2. Gdy użytkownik kliknie przycisk/zmieni wartość, Streamlit wykonuje skrypt ponownie
+# 3. session_state zachowuje dane między wykonaniami (nie tracisz zebranych danych)
+# 4. Każde polecenie st.* dodaje element do interfejsu w kolejności wykonania
+#
+# PRZEPŁYW DZIAŁANIA APLIKACJI:
+# ------------------------------
+# 1. Użytkownik uruchamia: streamlit run emo.py
+# 2. Streamlit otwiera aplikację w przeglądarce
+# 3. Użytkownik wybiera tryb i źródło wideo
+# 4. Użytkownik klika "Rozpocznij Analizę"
+# 5. Funkcja start_analysis() rozpoczyna przetwarzanie wideo:
+#    - Otwiera kamerę/plik
+#    - W pętli przetwarza kolejne klatki
+#    - Analizuje emocje i gesty
+#    - Wyświetla wyniki na żywo
+# 6. Użytkownik klika "Zatrzymaj Analizę"
+# 7. Funkcja generate_report() tworzy raport:
+#    - Oblicza średnie wartości
+#    - Wysyła dane do AI
+#    - Wyświetla wyniki i sugestie
+#
+# WSKAZÓWKI DLA STUDENTÓW:
+# -------------------------
+# - Spróbuj zmienić progi w funkcjach analyze_hands() i analyze_face()
+# - Dodaj własne emocje lub gesty do wykrywania
+# - Zmień kolory tekstu na obrazie (wartości BGR)
+# - Dodaj nowe tryby analizy
+# - Zapisz raport do pliku zamiast tylko wyświetlać
+# - Dodaj wykresy do wizualizacji wyników (użyj matplotlib)
+#
+# ==================================================================================
