@@ -433,12 +433,16 @@ def start_analysis(mode, input_source):
         # Streamlit file_uploader zwraca obiekt UploadedFile, nie ścieżkę
         # Musimy zapisać plik tymczasowo, aby OpenCV mógł go odczytać
         
+        # Inicjalizuj zmienną przed try block (na wypadek wyjątku)
+        temp_video_file = None
+        
         try:
             # Utwórz tymczasowy plik z odpowiednim rozszerzeniem
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_path.name)[1])
             tfile.write(file_path.read())
             tfile.close()
-            temp_file_path = tfile.name  # Zapisz ścieżkę do późniejszego usunięcia
+            temp_video_file = tfile.name  # Zapisz ścieżkę do późniejszego usunięcia
+            temp_file_path = temp_video_file
             
             # Otwórz tymczasowy plik
             cap = cv2.VideoCapture(temp_file_path)
@@ -446,13 +450,13 @@ def start_analysis(mode, input_source):
             # Sprawdź czy plik został poprawnie otwarty
             if not cap.isOpened():
                 st.error("❌ Nie można otworzyć pliku wideo. Sprawdź czy plik jest prawidłowy.")
-                if temp_file_path and os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
+                if temp_video_file and os.path.exists(temp_video_file):
+                    os.unlink(temp_video_file)
                 return
         except Exception as e:
             st.error(f"❌ Błąd podczas przetwarzania pliku: {e}")
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+            if temp_video_file and os.path.exists(temp_video_file):
+                os.unlink(temp_video_file)
             return
 
     # Utwórz pusty kontener Streamlit do wyświetlania wideo
@@ -668,7 +672,7 @@ def generate_report(mode):
     if not api_key:
         try:
             api_key = st.secrets.get("gemini_api_key")
-        except:
+        except (KeyError, FileNotFoundError, AttributeError):
             pass
     
     # Sprawdź czy klucz API został znaleziony
