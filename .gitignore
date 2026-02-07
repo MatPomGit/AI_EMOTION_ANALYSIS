@@ -86,6 +86,7 @@ Desktop.ini
 .env
 *.key
 secrets.json
+.streamlit/secrets.toml
 
 # Pliki logów
 *.log

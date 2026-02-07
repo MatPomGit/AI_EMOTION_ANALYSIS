@@ -137,44 +137,47 @@ W tym projekcie używamy wersji headless, ponieważ Streamlit wyświetla obrazy 
 
 ⚠️ **WAŻNE - Bezpieczeństwo!** ⚠️
 
-Aplikacja wykorzystuje Google Gemini API do generowania analiz behawioralnych. Obecnie klucz API jest zakodowany w pliku `emo.py`, co **NIE JEST BEZPIECZNE** i służy tylko celom demonstracyjnym/edukacyjnym.
+Aplikacja wykorzystuje Google Gemini API do generowania analiz behawioralnych. **Aplikacja została zaktualizowana i teraz używa bezpiecznych metod przechowywania klucza API.**
 
-**Dla studentów - To jest przykład jak NIE należy postępować w prawdziwych projektach!**
-
-**Zalecane bezpieczne rozwiązania:**
+**✅ Bezpieczne rozwiązania zaimplementowane w aplikacji:**
 
 1. **Użyj zmiennych środowiskowych** (najlepsze dla produkcji):
    ```bash
    # Linux/macOS
    export GEMINI_API_KEY="twój_klucz_api"
    
-   # Windows
+   # Windows (PowerShell)
+   $env:GEMINI_API_KEY="twój_klucz_api"
+   
+   # Windows (CMD)
    set GEMINI_API_KEY=twój_klucz_api
    ```
    
-   Następnie w kodzie:
-   ```python
-   import os
-   api_key = os.getenv('GEMINI_API_KEY')
+   Możesz też użyć pliku `.env` (wzór w `.env.example`):
+   ```bash
+   # Skopiuj przykładowy plik
+   cp .env.example .env
+   
+   # Edytuj plik .env i dodaj swój klucz
+   GEMINI_API_KEY=twój_klucz_api
    ```
 
-2. **Użyj pliku konfiguracyjnego** (dodaj `config.json` do `.gitignore`):
-   ```json
-   {
-     "gemini_api_key": "twój_klucz_api"
-   }
+2. **Użyj Streamlit Secrets** (zalecane dla aplikacji Streamlit):
+   ```bash
+   # Skopiuj przykładowy plik
+   cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+   
+   # Edytuj plik i dodaj swój klucz
+   # gemini_api_key = "twój_klucz_api"
    ```
-
-3. **Użyj Streamlit Secrets** (zalecane dla aplikacji Streamlit):
-   - Utwórz plik `.streamlit/secrets.toml`
-   - Dodaj: `gemini_api_key = "twój_klucz_api"`
-   - W kodzie użyj: `st.secrets["gemini_api_key"]`
 
 **Aby uzyskać własny klucz API:**
 1. Odwiedź: https://makersuite.google.com/app/apikey
 2. Zaloguj się kontem Google
 3. Utwórz nowy klucz API
 4. Skonfiguruj go jedną z powyższych metod
+
+**📌 Uwaga:** Jeśli nie skonfigurujesz klucza API, aplikacja będzie działać, ale nie wygeneruje analizy AI w raporcie końcowym.
 
 ### Krok 5: Zainstaluj pakiety systemowe (Linux)
 
@@ -342,6 +345,51 @@ Ten projekt wykorzystuje następujące narzędzia i biblioteki:
 - Możesz zmniejszyć rozdzielczość wideo
 - Zamknij inne aplikacje zużywające zasoby komputera
 
+#### Problem: "Błąd: Brak klucza API Google Gemini"
+**Rozwiązanie**:
+- Uzyskaj klucz API: https://makersuite.google.com/app/apikey
+- Ustaw zmienną środowiskową: `export GEMINI_API_KEY="twój_klucz"`
+- Lub utwórz plik `.streamlit/secrets.toml` i dodaj: `gemini_api_key = "twój_klucz"`
+
+#### Problem: "ImportError: No module named 'deepface'"
+**Rozwiązanie**:
+- Zainstaluj wszystkie zależności: `pip install -r requirement.txt`
+- Sprawdź czy używasz właściwego środowiska Python
+
+#### Problem: "Plik wideo nie może być przetworzony"
+**Rozwiązanie**:
+- Sprawdź format pliku (obsługiwane: mp4, avi, mov)
+- Sprawdź rozmiar pliku (max 200 MB)
+- Upewnij się, że plik nie jest uszkodzony
+
+#### Problem: "ValueError podczas analizy emocji"
+**Rozwiązanie**:
+- Upewnij się, że twarz jest dobrze oświetlona
+- Sprawdź czy twarz jest widoczna w kadrze
+- Aplikacja automatycznie obsługuje brak twarzy
+
+## Wymagania Sprzętowe
+
+### Minimalne Wymagania
+- **Procesor**: Intel Core i3 lub równoważny
+- **RAM**: 4 GB
+- **Kamera**: Dowolna kamera USB lub wbudowana (dla trybu kamery)
+- **Miejsce na dysku**: 2 GB (dla bibliotek i modeli AI)
+- **System operacyjny**: Windows 10+, macOS 10.14+, Linux (Ubuntu 18.04+)
+
+### Zalecane Wymagania
+- **Procesor**: Intel Core i5/i7 lub równoważny
+- **RAM**: 8 GB lub więcej
+- **Kamera**: HD (720p) lub lepsza
+- **Miejsce na dysku**: 5 GB
+- **GPU**: Opcjonalnie dla szybszego przetwarzania (CUDA compatible)
+
+### Uwagi o Wydajności
+- Aplikacja wykorzystuje modele głębokiego uczenia, które są zasobożerne
+- Pierwszy uruchomienie może potrwać dłużej (pobieranie modeli)
+- Analiza wideo w czasie rzeczywistym wymaga lepszego sprzętu
+- Na słabszych komputerach zalecamy analizę krótszych filmów
+
 ## Dalsze Kroki i Rozszerzenia
 
 ### Pomysły na Modyfikacje dla Studentów:
@@ -372,7 +420,15 @@ Zachęcamy do współtworzenia projektu! Możesz:
 
 ## Licencja
 
-Ten projekt jest dostępny jako materiał edukacyjny. Możesz go swobodnie używać, modyfikować i udostępniać w celach nauki.
+Ten projekt jest udostępniony na licencji MIT. Zobacz plik [LICENSE](LICENSE) dla szczegółów.
+
+Możesz swobodnie:
+- Używać projektu w celach edukacyjnych i komercyjnych
+- Modyfikować kod
+- Dystrybuować kopie
+- Używać w swoich projektach
+
+Pod warunkiem zachowania informacji o prawach autorskich i licencji.
 
 ---
 

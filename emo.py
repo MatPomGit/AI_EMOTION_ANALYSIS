@@ -181,15 +181,41 @@ def analyze_emotion(frame):
     enforce_detection=False sprawia, że funkcja nie zgłasza błędu,
     jeśli nie wykryje twarzy - zamiast tego zwraca neutralne wyniki
     """
-    # Wywołaj analizę DeepFace na bieżącej klatce
-    # actions=['emotion'] - analizujemy tylko emocje (nie wiek, płeć, rasę)
-    result = DeepFace.analyze(frame, actions=['emotion'], enforce_detection=False)
-    
-    # Wyciągnij słownik z wynikami emocji z wyniku analizy
-    # result[0] bo DeepFace może zwracać listę wyników (dla wielu twarzy)
-    emotion_scores = result[0]['emotion']
-    
-    return emotion_scores
+    try:
+        # Wywołaj analizę DeepFace na bieżącej klatce
+        # actions=['emotion'] - analizujemy tylko emocje (nie wiek, płeć, rasę)
+        result = DeepFace.analyze(frame, actions=['emotion'], enforce_detection=False)
+        
+        # Sprawdź czy wynik jest prawidłowy i niepusty
+        if result and len(result) > 0 and 'emotion' in result[0]:
+            # Wyciągnij słownik z wynikami emocji z wyniku analizy
+            # result[0] bo DeepFace może zwracać listę wyników (dla wielu twarzy)
+            emotion_scores = result[0]['emotion']
+            return emotion_scores
+        else:
+            # Jeśli wynik jest pusty, zwróć neutralne wartości
+            return {
+                "happy": 0.0,
+                "sad": 0.0,
+                "angry": 0.0,
+                "surprise": 0.0,
+                "fear": 0.0,
+                "disgust": 0.0,
+                "neutral": 100.0
+            }
+    except Exception as e:
+        # W przypadku błędu (np. problem z modelem, uszkodzony obraz)
+        # Zwróć neutralne wartości i zaloguj ostrzeżenie
+        print(f"Ostrzeżenie: Błąd analizy emocji: {e}")
+        return {
+            "happy": 0.0,
+            "sad": 0.0,
+            "angry": 0.0,
+            "surprise": 0.0,
+            "fear": 0.0,
+            "disgust": 0.0,
+            "neutral": 100.0
+        }
 
 
 # FUNKCJA 3: Analiza gestów dłoni za pomocą MediaPipe
@@ -376,6 +402,12 @@ def start_analysis(mode, input_source):
     if input_source == "camera":
         # Otwórz domyślną kamerę (0 = pierwsza kamera w systemie)
         cap = cv2.VideoCapture(0)
+        
+        # Sprawdź czy kamera została poprawnie otwarta
+        if not cap.isOpened():
+            st.error("❌ Nie można otworzyć kamery. Sprawdź czy:")
+            st.info("• Kamera jest podłączona\n• Żadna inna aplikacja nie używa kamery\n• Masz uprawnienia do dostępu do kamery")
+            return
     else:
         # Pozwól użytkownikowi przesłać plik wideo
         file_path = st.file_uploader("Prześlij plik wideo", type=["mp4", "avi", "mov"])
@@ -385,18 +417,47 @@ def start_analysis(mode, input_source):
             st.warning("Proszę przesłać plik wideo.")
             return
         
+        # Walidacja rozmiaru pliku (max 200 MB)
+        max_size_mb = 200
+        file_size_mb = file_path.size / (1024 * 1024)  # Konwersja na MB
+        
+        if file_size_mb > max_size_mb:
+            st.error(f"❌ Plik jest za duży ({file_size_mb:.1f} MB). Maksymalny rozmiar: {max_size_mb} MB.")
+            st.info("💡 Tip: Skompresuj wideo lub użyj krótszego fragmentu.")
+            return
+        
+        # Wyświetl informację o rozmiarze pliku
+        st.info(f"📁 Przetwarzanie pliku: {file_path.name} ({file_size_mb:.1f} MB)")
+        
         # POPRAWKA: Zapisz przesłany plik tymczasowo
         # Streamlit file_uploader zwraca obiekt UploadedFile, nie ścieżkę
         # Musimy zapisać plik tymczasowo, aby OpenCV mógł go odczytać
         
-        # Utwórz tymczasowy plik z odpowiednim rozszerzeniem
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_path.name)[1])
-        tfile.write(file_path.read())
-        tfile.close()
-        temp_file_path = tfile.name  # Zapisz ścieżkę do późniejszego usunięcia
+        # Inicjalizuj zmienną przed try block (na wypadek wyjątku)
+        temp_video_file = None
         
-        # Otwórz tymczasowy plik
-        cap = cv2.VideoCapture(temp_file_path)
+        try:
+            # Utwórz tymczasowy plik z odpowiednim rozszerzeniem
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_path.name)[1])
+            tfile.write(file_path.read())
+            tfile.close()
+            temp_video_file = tfile.name  # Zapisz ścieżkę do późniejszego usunięcia
+            temp_file_path = temp_video_file
+            
+            # Otwórz tymczasowy plik
+            cap = cv2.VideoCapture(temp_file_path)
+            
+            # Sprawdź czy plik został poprawnie otwarty
+            if not cap.isOpened():
+                st.error("❌ Nie można otworzyć pliku wideo. Sprawdź czy plik jest prawidłowy.")
+                if temp_video_file and os.path.exists(temp_video_file):
+                    os.unlink(temp_video_file)
+                return
+        except Exception as e:
+            st.error(f"❌ Błąd podczas przetwarzania pliku: {e}")
+            if temp_video_file and os.path.exists(temp_video_file):
+                os.unlink(temp_video_file)
+            return
 
     # Utwórz pusty kontener Streamlit do wyświetlania wideo
     stframe = st.empty()
@@ -596,26 +657,36 @@ def generate_report(mode):
 
     # KROK 7: Wywołaj Google Gemini AI do analizy
     # --------------------------------------------
-    # ⚠️ UWAGA BEZPIECZEŃSTWA! ⚠️
-    # Ten klucz API jest zakodowany na stałe w kodzie, co stanowi POWAŻNE zagrożenie bezpieczeństwa!
-    # W prawdziwych projektach NIGDY nie umieszczaj kluczy API w kodzie źródłowym!
-    #
-    # BEZPIECZNE ROZWIĄZANIA:
-    # 1. Użyj zmiennych środowiskowych:
-    #    import os
-    #    api_key = os.getenv('GEMINI_API_KEY')
-    #
-    # 2. Użyj pliku konfiguracyjnego (dodaj go do .gitignore):
-    #    import json
-    #    with open('config.json') as f:
-    #        config = json.load(f)
-    #    api_key = config['gemini_api_key']
-    #
-    # 3. Użyj Streamlit secrets:
-    #    api_key = st.secrets["gemini_api_key"]
-    #
-    # TODO dla studentów: Przenieś ten klucz do bezpiecznego miejsca!
-    client = genai.Client(api_key="AIzaSyAFsZjer2IRBvB83I7FrPDVVMK484JLZsE")
+    # ✅ BEZPIECZNE ROZWIĄZANIE - Użycie zmiennych środowiskowych lub Streamlit secrets
+    # Próbuje załadować klucz API w kolejności:
+    # 1. Ze zmiennych środowiskowych (GEMINI_API_KEY)
+    # 2. Z Streamlit secrets (dla aplikacji wdrożonych na Streamlit Cloud)
+    # 3. W przypadku braku klucza - wyświetla ostrzeżenie
+    
+    api_key = None
+    
+    # Próba 1: Zmienne środowiskowe
+    api_key = os.getenv('GEMINI_API_KEY')
+    
+    # Próba 2: Streamlit secrets (jeśli aplikacja jest wdrożona)
+    if not api_key:
+        try:
+            api_key = st.secrets.get("gemini_api_key")
+        except (KeyError, FileNotFoundError, AttributeError):
+            pass
+    
+    # Sprawdź czy klucz API został znaleziony
+    if not api_key:
+        st.error("❌ Brak klucza API Google Gemini! Ustaw zmienną środowiskową GEMINI_API_KEY lub dodaj klucz do Streamlit secrets.")
+        st.info("ℹ️ Jak uzyskać klucz API: https://makersuite.google.com/app/apikey")
+        return "Brak konfiguracji API - nie można wygenerować analizy AI."
+    
+    # Inicjalizuj klienta z bezpiecznie pobranym kluczem
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        st.error(f"❌ Błąd inicjalizacji klienta Google Gemini: {e}")
+        return "Błąd konfiguracji API - nie można wygenerować analizy AI."
     
     # Wyślij prompt do modelu Gemini
     response = client.models.generate_content(
